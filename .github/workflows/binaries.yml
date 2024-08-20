@@ -73,7 +73,6 @@ jobs:
       - name: Apply patches
         shell: msys2 {0}
         run: |
-          patch -p1 < msys2/nginx-0007-logs-write-access-log-to-stderr.patch
           patch -p1 < msys2/proxy_connect_rewrite_102101.patch
 
       - name: Build nginx
