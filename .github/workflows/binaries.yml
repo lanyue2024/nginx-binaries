@@ -34,6 +34,8 @@ jobs:
   nginx-x86_64-win32:
     name: nginx-${{ matrix.NGINX_VERSION }}-x86_64-win32
     runs-on: windows-latest
+    permissions:
+      contents: write
     strategy:
       matrix:
         NGINX_VERSION:
@@ -91,4 +93,11 @@ jobs:
           name: nginx-${{ matrix.NGINX_VERSION }}-x86_64-win32
           path: artifact/*
 
+      - name: release
+        uses: ncipollo/release-action@v1
+        with:
+          commit: "${$GITHUB_SHA}"
+          artifacts: "artifact/*"
+
+        
 
