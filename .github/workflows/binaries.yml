@@ -1,5 +1,6 @@
 name: binaries
 on:
+  workflow_dispatch:
   push:
     # Don't run on version tags (these are used for JS module).
     tags-ignore:
@@ -13,6 +14,7 @@ on:
   pull_request:
   schedule:
     - cron:  '0 0 * * 0'  # run each Sunday
+
 
 env:
   ALPINE_BRANCH: v3.18
@@ -38,6 +40,7 @@ env:
     openresty/echo-nginx-module
     openresty/headers-more-nginx-module
     openresty/set-misc-nginx-module
+    chobits/ngx_http_proxy_connect_module
   # Don't update binaries with unchanged sources.
   SKIP_SAME_SOURCES: true
 
@@ -257,8 +260,6 @@ jobs:
     strategy:
       matrix:
         NGINX_VERSION:
-          - 1.24.x
-          - 1.25.x
           - 1.26.x
     steps:
       - name: Setup MSYS2 and install packages
@@ -280,6 +281,10 @@ jobs:
         shell: msys2 {0}
         run: ./master/scripts/fetch-sources -d msys2 "myfreeer/nginx-build-msys2@1.22.0"
 
+      - name: Download ngx_http_proxy_connect_module patches
+        shell: msys2 {0}
+        run: curl -L -o msys2/proxy_connect_rewrite_102101.patch 'https://github.com/chobits/ngx_http_proxy_connect_module/blob/master/patch/proxy_connect_rewrite_102101.patch'
+
       - name: Download and extract nginx modules
         shell: msys2 {0}
         run: ./master/scripts/fetch-sources $NGINX_MODULES_WIN32
@@ -298,7 +303,10 @@ jobs:
               done
             ;;
             # Other patches are not needed since 1.23.4.
-            *) patch -p1 < msys2/nginx-0007-logs-write-access-log-to-stderr.patch;;
+            *) 
+                patch -p1 < msys2/nginx-0007-logs-write-access-log-to-stderr.patch
+                patch -p1 < msys2/proxy_connect_rewrite_102101.patch
+            ;;
           esac
 
       - name: Build nginx
@@ -316,89 +324,4 @@ jobs:
           name: nginx-${{ matrix.NGINX_VERSION }}-x86_64-win32
           path: artifact/*
 
-  upload:
-    name: Upload binaries
-    needs:
-      - njs-multi-linux
-      - njs-x86_64-darwin
-      - nginx-multi-linux
-      - nginx-x86_64-darwin
-      - nginx-x86_64-win32
-    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    container:
-      image: docker://alpine:3.18
-    steps:
-      - name: Install dependencies
-        run: apk add -U git nodejs tree
 
-      - name: Checkout master branch
-        uses: actions/checkout@v4
-        with:
-          path: master
-
-      - name: Checkout binaries branch
-        uses: actions/checkout@v4
-        with:
-          ref: binaries
-          path: binaries
-
-      - name: Download and unpack all workflow run artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifact
-          merge-multiple: true
-
-      - name: List unpacked artifact files
-        run: ls -lah artifact/
-
-      # XXX: Windows builds of nginx and macOS builds of njs-debug are not reproducible.
-      #  This is a workaround to avoid unnecessary updates of binaries that are built from
-      #  very same sources as the existing (note that we track even used system libs).
-      - name: Move binaries with changed source checksums to the repository
-        if: env.SKIP_SAME_SOURCES == 'true'
-        working-directory: binaries
-        run: |
-          mv ../artifact/*.sources .
-          for name in $(git status --porcelain | cut -c4-); do
-              mv -v ../artifact/${name%.sources}* .
-          done
-
-      - name: Move all binaries to the repository
-        if: env.SKIP_SAME_SOURCES != 'true'
-        run: mv -v artifact/* binaries/
-
-      - name: Generate index.json
-        run: ./master/scripts/generate-index --json binaries/ binaries/index.json
-
-      - name: Generate index.csv
-        run: ./master/scripts/generate-index --csv binaries/ binaries/index.csv
-
-      - name: Generate index.html
-        working-directory: binaries
-        run: tree -hv -H . -o index.html .
-
-      - name: Check if there are any changes
-        id: has_changes
-        working-directory: binaries
-        run: |
-          git status || exit 1
-          test -n "$(git status --porcelain)" && result=yes || result=no
-          echo "result=$result" >> $GITHUB_OUTPUT
-
-      - name: Commit changes
-        if: steps.has_changes.outputs.result == 'yes'
-        working-directory: binaries
-        run: |
-          git config --local user.email "github-actions@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add --all
-          git commit -m "Built from ${{ github.sha }}"
-
-      - name: Push changes back to origin
-        if: steps.has_changes.outputs.result == 'yes'
-        working-directory: binaries
-        run: |
-          # XXX: workaround for https://github.com/orgs/community/discussions/55820
-          git config --global http.version HTTP/1.1
-          git push https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git binaries
