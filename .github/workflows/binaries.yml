@@ -96,7 +96,7 @@ jobs:
       - name: release
         uses: ncipollo/release-action@v1
         with:
-          commit: ${{ GITHUB_SHA }}
+          commit: ${{ github.sha }}
           artifacts: "artifact/*"
 
         
