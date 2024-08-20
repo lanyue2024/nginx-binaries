@@ -60,8 +60,8 @@ jobs:
 
       - name: Download ngx_http_proxy_connect_module patches
         shell: msys2 {0}
-        run: curl -L -o msys2/proxy_connect_rewrite_102101.patch 'https://github.com/chobits/ngx_http_proxy_connect_module/blob/master/patch/proxy_connect_rewrite_102101.patch'
-
+        run: curl -L -o msys2/proxy_connect_rewrite_102101.patch 'https://raw.githubusercontent.com/chobits/ngx_http_proxy_connect_module/master/patch/proxy_connect_rewrite_102101.patch'
+        
       - name: Download and extract nginx modules
         shell: msys2 {0}
         run: ./master/scripts/fetch-sources $NGINX_MODULES_WIN32
@@ -73,6 +73,7 @@ jobs:
       - name: Apply patches
         shell: msys2 {0}
         run: |
+          patch -p1 < msys2/nginx-0007-logs-write-access-log-to-stderr.patch
           patch -p1 < msys2/proxy_connect_rewrite_102101.patch
 
       - name: Build nginx
